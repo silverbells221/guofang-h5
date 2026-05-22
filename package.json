@@ -1,0 +1,10 @@
+{
+  "name": "rongyao-junshan-static",
+  "private": true,
+  "description": "戎耀君山国防教育课堂 — GitHub Pages 静态站点",
+  "scripts": {
+    "prepare": "node scripts/prepare-static-site.mjs",
+    "verify": "node scripts/verify-assets.mjs",
+    "serve": "npx --yes serve . -l 3000"
+  }
+}
