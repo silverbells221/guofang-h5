@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 /**
  * Prepare Next.js static export for GitHub Pages.
+ * - Custom domain (CNAME): paths stay at /
+ * - Project page (no CNAME): paths use /repo-name/
  */
 
 import fs from 'node:fs';
@@ -9,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DEFAULT_REPO = 'guofang-h5';
+const STRIP_PREFIXES = [`/${DEFAULT_REPO}`];
 
 const REQUIRED_ASSETS = [
   'splash-bg.jpg',
@@ -30,6 +33,8 @@ const PLACEHOLDER_PNG = Buffer.from(
   'base64',
 );
 
+const TEXT_EXTENSIONS = new Set(['.html', '.js', '.css', '.json']);
+
 function normalizeBasePath(input) {
   if (!input || input === '/') return '';
   let base = input.trim();
@@ -37,9 +42,22 @@ function normalizeBasePath(input) {
   return base.replace(/\/+$/, '');
 }
 
+function readCname() {
+  const cnamePath = path.join(ROOT, 'CNAME');
+  if (!fs.existsSync(cnamePath)) return null;
+  const host = fs.readFileSync(cnamePath, 'utf8').trim();
+  return host || null;
+}
+
 function detectBasePath() {
   if (process.env.BASE_PATH !== undefined) {
     return normalizeBasePath(process.env.BASE_PATH);
+  }
+
+  const cname = readCname();
+  if (cname) {
+    console.log(`CNAME: ${cname} → deploy at site root /`);
+    return '';
   }
 
   const repo = process.env.GITHUB_REPOSITORY?.split('/')[1];
@@ -61,6 +79,39 @@ function walk(dir, onFile) {
       onFile(full);
     }
   }
+}
+
+function transformTextFiles(transform) {
+  let count = 0;
+  walk(ROOT, (file) => {
+    if (!TEXT_EXTENSIONS.has(path.extname(file))) return;
+    if (file.includes(`${path.sep}scripts${path.sep}`)) return;
+
+    const original = fs.readFileSync(file, 'utf8');
+    const updated = transform(original);
+    if (updated !== original) {
+      fs.writeFileSync(file, updated, 'utf8');
+      count += 1;
+    }
+  });
+  return count;
+}
+
+function stripKnownPrefixes(content) {
+  let out = content;
+  for (const prefix of STRIP_PREFIXES) {
+    const doubled = prefix + prefix;
+    while (out.includes(doubled)) {
+      out = out.split(doubled).join(prefix);
+    }
+    out = out.split(prefix).join('');
+  }
+  return out;
+}
+
+function stripAllPrefixes() {
+  const count = transformTextFiles(stripKnownPrefixes);
+  console.log(`Stripped project prefixes in ${count} files.`);
 }
 
 function removeBuildArtifacts() {
@@ -101,19 +152,15 @@ function ensureAssets() {
   }
 }
 
-function rewritePaths(basePath) {
-  if (!basePath) {
-    console.log('BASE_PATH is empty — site root deployment.');
-    return;
-  }
+function applyPrefix(content, basePath) {
+  if (!basePath) return content;
 
   const prefix = basePath;
   const slug = prefix.slice(1);
-  const exts = new Set(['.html', '.js', '.css', '.json']);
   const doubled = prefix + prefix;
 
-  const replaceContent = (content) => {
-    let out = content;
+  const replaceContent = (text) => {
+    let out = text;
     while (out.includes(doubled)) {
       out = out.split(doubled).join(prefix);
     }
@@ -122,11 +169,9 @@ function rewritePaths(basePath) {
 
     const rules = [
       [new RegExp(`href="/${skip}`, 'g'), `href="${prefix}/`],
-      // Next.js client bundles (ContentLayout back link, etc.)
       [new RegExp(`href:"/${skip}`, 'g'), `href:"${prefix}/`],
       [new RegExp(`href:'/${skip}`, 'g'), `href:'${prefix}/`],
       [new RegExp(`src="/${skip}`, 'g'), `src="${prefix}/`],
-      [new RegExp(`href='/${skip}`, 'g'), `href='${prefix}/`],
       [new RegExp(`src='/${skip}`, 'g'), `src='${prefix}/`],
       [new RegExp(`src:"/${skip}`, 'g'), `src:"${prefix}/`],
       [new RegExp(`icon:"/${skip}`, 'g'), `icon:"${prefix}/`],
@@ -137,10 +182,10 @@ function rewritePaths(basePath) {
       [new RegExp(`\\[\\"/${skip}_next/`, 'g'), `["${prefix}/_next/`],
       [new RegExp(`url=/${skip}`, 'g'), `url=${prefix}/`],
       [new RegExp(`location\\.replace\\("/${skip}`, 'g'), `location.replace("${prefix}/`],
-      // RSC inline payloads inside HTML (escaped JSON)
       [new RegExp(`\\\\"/${skip}_next/`, 'g'), `\\"${prefix}/_next/`],
       [new RegExp(`\\\\"/${skip}favicon`, 'g'), `\\"${prefix}/favicon`],
       [new RegExp(`"/${skip}_next/`, 'g'), `"${prefix}/_next/`],
+      [new RegExp(`let t="/${skip}_next/`, 'g'), `let t="${prefix}/_next/`],
     ];
 
     for (const [re, rep] of rules) {
@@ -150,20 +195,17 @@ function rewritePaths(basePath) {
     return out;
   };
 
-  let count = 0;
-  walk(ROOT, (file) => {
-    if (!exts.has(path.extname(file))) return;
-    if (file.includes(`${path.sep}scripts${path.sep}`)) return;
+  return replaceContent(content);
+}
 
-    const original = fs.readFileSync(file, 'utf8');
-    const updated = replaceContent(original);
-    if (updated !== original) {
-      fs.writeFileSync(file, updated, 'utf8');
-      count += 1;
-    }
-  });
+function rewritePaths(basePath) {
+  if (!basePath) {
+    console.log('BASE_PATH is empty — assets use / (custom domain or user site).');
+    return;
+  }
 
-  console.log(`Rewrote paths with prefix "${prefix}" in ${count} files.`);
+  const count = transformTextFiles((content) => applyPrefix(content, basePath));
+  console.log(`Applied prefix "${basePath}" in ${count} files.`);
 }
 
 function writeFriendly404(basePath) {
@@ -194,10 +236,17 @@ function main() {
   fs.writeFileSync(path.join(ROOT, '.nojekyll'), '');
   ensureAssets();
   removeBuildArtifacts();
+  stripAllPrefixes();
   const basePath = detectBasePath();
   rewritePaths(basePath);
   writeFriendly404(basePath);
-  console.log(`Static site ready. Pages URL: https://<user>.github.io${basePath || ''}/`);
+
+  const cname = readCname();
+  if (cname) {
+    console.log(`Live site: https://${cname}/`);
+  } else {
+    console.log(`Live site: https://<user>.github.io${basePath || ''}/`);
+  }
 }
 
 main();

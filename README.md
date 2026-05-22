@@ -15,11 +15,9 @@
 
 ## 在线地址
 
-本仓库对应 GitHub Pages 项目页：
+**https://www.junshanguofang.cc.cd/**（自定义域名，根路径 `/`）
 
-**https://silverbells221.github.io/guofang-h5/**
-
-推送前请执行 `npm run prepare`，将资源路径改写为 `/guofang-h5/`（项目页子路径，非网站根目录）。
+仓库含 `CNAME` 时，`npm run prepare` 会自动使用根路径；无 `CNAME` 时使用 `/guofang-h5/` 子路径。
 
 ## 部署说明
 
@@ -64,7 +62,7 @@ npm run prepare
 npm run serve
 ```
 
-浏览器打开 **http://localhost:3000/guofang-h5/**（项目页必须带子路径）
+浏览器打开 **http://localhost:3000/**（已配置 `CNAME` 时用根路径预览）
 
 ## 重要：补全静态图片资源
 

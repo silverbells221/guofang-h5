@@ -1,6 +1,8 @@
 # 戎耀君山 H5 — 最优部署流程
 
-在线地址：**https://silverbells221.github.io/guofang-h5/**
+在线地址（自定义域名）：**https://www.junshanguofang.cc.cd/**
+
+备用地址：**https://silverbells221.github.io/guofang-h5/**（使用根路径部署后，此地址可能不可用，请以自定义域名为准）
 
 仓库：**https://github.com/silverbells221/guofang-h5**
 
@@ -8,11 +10,15 @@
 
 ## 一、一次性配置（只做一次）
 
-### 1. 开启 GitHub Pages
+### 1. 开启 GitHub Pages 与自定义域名
 
 1. 打开仓库 **Settings → Pages**
 2. **Build and deployment → Source** 选择 **GitHub Actions**（不要选 Deploy from a branch）
-3. 保存
+3. **Custom domain** 填写：`www.junshanguofang.cc.cd`（与仓库根目录 `CNAME` 文件一致）
+4. 在域名 DNS 添加 CNAME 记录：`www` → `silverbells221.github.io`
+5. 若还要支持裸域 `junshanguofang.cc.cd`，在 DNS 服务商把 apex 301 跳转到 `www`
+
+仓库内必须有 **`CNAME`** 文件（仅一行域名），部署脚本才会使用根路径 `/`。
 
 ### 2. 只保留一个部署工作流
 
