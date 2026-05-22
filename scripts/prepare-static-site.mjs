@@ -1,10 +1,6 @@
 #!/usr/bin/env node
 /**
  * Prepare Next.js static export for GitHub Pages.
- * - Ensures .nojekyll exists
- * - Removes build-only artifacts
- * - Optionally rewrites absolute paths for project Pages (BASE_PATH=/repo-name)
- * - Creates tiny placeholder images when public assets are missing
  */
 
 import fs from 'node:fs';
@@ -12,6 +8,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const DEFAULT_REPO = 'guofang-h5';
 
 const REQUIRED_ASSETS = [
   'splash-bg.jpg',
@@ -41,14 +38,17 @@ function normalizeBasePath(input) {
 }
 
 function detectBasePath() {
-  const explicit = process.env.BASE_PATH;
-  if (explicit !== undefined) return normalizeBasePath(explicit);
+  if (process.env.BASE_PATH !== undefined) {
+    return normalizeBasePath(process.env.BASE_PATH);
+  }
 
   const repo = process.env.GITHUB_REPOSITORY?.split('/')[1];
-  if (!repo) return '';
+  if (repo) {
+    if (repo.endsWith('.github.io')) return '';
+    return normalizeBasePath(`/${repo}`);
+  }
 
-  if (repo.endsWith('.github.io')) return '';
-  return normalizeBasePath(`/${repo}`);
+  return normalizeBasePath(`/${DEFAULT_REPO}`);
 }
 
 function walk(dir, onFile) {
@@ -64,18 +64,12 @@ function walk(dir, onFile) {
 }
 
 function removeBuildArtifacts() {
-  const patterns = [
-    /^__next\./,
-    /^index\.txt$/,
-    /^[a-f0-9]{32}\.txt$/,
-  ];
+  const patterns = [/^__next\./, /^index\.txt$/, /^[a-f0-9]{32}\.txt$/];
 
   walk(ROOT, (file) => {
     const rel = path.relative(ROOT, file).replace(/\\/g, '/');
     const base = path.basename(file);
-
     if (rel.startsWith('scripts/')) return;
-
     if (patterns.some((p) => p.test(base)) && file.endsWith('.txt')) {
       fs.unlinkSync(file);
       console.log(`removed artifact: ${rel}`);
@@ -96,43 +90,60 @@ function ensureAssets() {
   for (const name of REQUIRED_ASSETS) {
     const file = path.join(ROOT, name);
     if (fs.existsSync(file)) continue;
-
     const buf = name.endsWith('.jpg') ? PLACEHOLDER_JPEG : PLACEHOLDER_PNG;
     fs.writeFileSync(file, buf);
     created.push(name);
   }
   if (created.length) {
     console.warn(
-      `Created placeholder assets (replace with real files from your Next.js public/ folder):\n  - ${created.join('\n  - ')}`,
+      `Created placeholder assets (replace with real files from public/):\n  - ${created.join('\n  - ')}`,
     );
   }
 }
 
 function rewritePaths(basePath) {
   if (!basePath) {
-    console.log('BASE_PATH is empty — site root deployment (user/org Pages or custom domain).');
+    console.log('BASE_PATH is empty — site root deployment.');
     return;
   }
 
   const prefix = basePath;
-  const exts = new Set(['.html', '.js', '.css', '.txt']);
+  const slug = prefix.slice(1);
+  const exts = new Set(['.html', '.js', '.css', '.json']);
+  const doubled = prefix + prefix;
 
   const replaceContent = (content) => {
     let out = content;
-    out = out.replace(/href="\//g, `href="${prefix}/`);
-    out = out.replace(/src="\//g, `src="${prefix}/`);
-    out = out.replace(/href='\/'/g, `href='${prefix}/'`);
-    out = out.replace(/src='\/'/g, `src='${prefix}/'`);
-    out = out.replace(/:"\/_next\//g, `:"${prefix}/_next/`);
-    out = out.replace(/:"\/home\//g, `:"${prefix}/home/`);
-    out = out.replace(/:"\/gangtie-changcheng\//g, `:"${prefix}/gangtie-changcheng/`);
-    out = out.replace(/:"\/yingxiong-lizan\//g, `:"${prefix}/yingxiong-lizan/`);
-    out = out.replace(/:"\/guofang-guangjiao\//g, `:"${prefix}/guofang-guangjiao/`);
-    out = out.replace(/:"\/zhengce-zhichuang\//g, `:"${prefix}/zhengce-zhichuang/`);
-    out = out.replace(/window\.location\.href="\/home\/"/g, `window.location.href="${prefix}/home/"`);
-    out = out.replace(/src:"\/splash-bg\.jpg"/g, `src:"${prefix}/splash-bg.jpg"`);
-    out = out.replace(/src:"\/catalog-bg\.png"/g, `src:"${prefix}/catalog-bg.png"`);
-    out = out.replace(/icon:"\/icon-/g, `icon:"${prefix}/icon-`);
+    while (out.includes(doubled)) {
+      out = out.split(doubled).join(prefix);
+    }
+
+    const skip = `(?!${slug}/|/)`;
+
+    const rules = [
+      [new RegExp(`href="/${skip}`, 'g'), `href="${prefix}/`],
+      [new RegExp(`src="/${skip}`, 'g'), `src="${prefix}/`],
+      [new RegExp(`href='/${skip}`, 'g'), `href='${prefix}/`],
+      [new RegExp(`src='/${skip}`, 'g'), `src='${prefix}/`],
+      [new RegExp(`src:"/${skip}`, 'g'), `src:"${prefix}/`],
+      [new RegExp(`icon:"/${skip}`, 'g'), `icon:"${prefix}/`],
+      [new RegExp(`href:\`/${skip}`, 'g'), `href:\`${prefix}/`],
+      [new RegExp(`window\\.location\\.href="/${skip}`, 'g'), `window.location.href="${prefix}/`],
+      [new RegExp(`:"/${skip}_next/`, 'g'), `:"${prefix}/_next/`],
+      [new RegExp(`,\"/${skip}_next/`, 'g'), `,"${prefix}/_next/`],
+      [new RegExp(`\\[\\"/${skip}_next/`, 'g'), `["${prefix}/_next/`],
+      [new RegExp(`url=/${skip}`, 'g'), `url=${prefix}/`],
+      [new RegExp(`location\\.replace\\("/${skip}`, 'g'), `location.replace("${prefix}/`],
+      // RSC inline payloads inside HTML (escaped JSON)
+      [new RegExp(`\\\\"/${skip}_next/`, 'g'), `\\"${prefix}/_next/`],
+      [new RegExp(`\\\\"/${skip}favicon`, 'g'), `\\"${prefix}/favicon`],
+      [new RegExp(`"/${skip}_next/`, 'g'), `"${prefix}/_next/`],
+    ];
+
+    for (const [re, rep] of rules) {
+      out = out.replace(re, rep);
+    }
+
     return out;
   };
 
@@ -149,7 +160,7 @@ function rewritePaths(basePath) {
     }
   });
 
-  console.log(`Rewrote absolute paths with prefix "${prefix}" in ${count} files.`);
+  console.log(`Rewrote paths with prefix "${prefix}" in ${count} files.`);
 }
 
 function writeFriendly404(basePath) {
@@ -183,7 +194,7 @@ function main() {
   const basePath = detectBasePath();
   rewritePaths(basePath);
   writeFriendly404(basePath);
-  console.log('Static site preparation complete.');
+  console.log(`Static site ready. Pages URL: https://<user>.github.io${basePath || ''}/`);
 }
 
 main();
