@@ -13,11 +13,19 @@
 | `/guofang-guangjiao/` | 国防广角 |
 | `/zhengce-zhichuang/` | 政策之窗 |
 
+## 在线地址
+
+本仓库对应 GitHub Pages 项目页：
+
+**https://silverbells221.github.io/guofang-h5/**
+
+推送前请执行 `npm run prepare`，将资源路径改写为 `/guofang-h5/`（项目页子路径，非网站根目录）。
+
 ## 部署到 GitHub Pages
 
-1. 将本目录推送到 GitHub 仓库（仓库根目录即为站点根目录）。
+1. 推送到 [silverbells221/guofang-h5](https://github.com/silverbells221/guofang-h5)。
 2. 在仓库 **Settings → Pages** 中，将 **Source** 设为 **GitHub Actions**。
-3. 推送 `main` 或 `master` 分支后，工作流 [deploy-pages.yml](.github/workflows/deploy-pages.yml) 会自动：
+3. 推送 `main` 分支后，工作流 [deploy-pages.yml](.github/workflows/deploy-pages.yml) 会自动：
    - 写入 `.nojekyll`（避免 Jekyll 忽略 `_next` 目录）
    - 清理构建中间文件
    - 按仓库名自动设置子路径（项目页：`https://<user>.github.io/<repo>/`）
