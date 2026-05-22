@@ -21,6 +21,12 @@
 
 推送前请执行 `npm run prepare`，将资源路径改写为 `/guofang-h5/`（项目页子路径，非网站根目录）。
 
+## 部署说明
+
+完整步骤见 **[DEPLOY.md](DEPLOY.md)**（一次性配置 + 日常更新 + 排错）。
+
+要点：仓库只保留 **一个** 工作流 [deploy-pages.yml](.github/workflows/deploy-pages.yml)，删除 GitHub 自带的 `static.yml`，避免重复部署且缺少路径修复。
+
 ## 部署到 GitHub Pages
 
 1. 推送到 [silverbells221/guofang-h5](https://github.com/silverbells221/guofang-h5)。
@@ -58,7 +64,7 @@ npm run prepare
 npm run serve
 ```
 
-浏览器打开 http://localhost:3000
+浏览器打开 **http://localhost:3000/guofang-h5/**（项目页必须带子路径）
 
 ## 重要：补全静态图片资源
 
