@@ -122,6 +122,9 @@ function rewritePaths(basePath) {
 
     const rules = [
       [new RegExp(`href="/${skip}`, 'g'), `href="${prefix}/`],
+      // Next.js client bundles (ContentLayout back link, etc.)
+      [new RegExp(`href:"/${skip}`, 'g'), `href:"${prefix}/`],
+      [new RegExp(`href:'/${skip}`, 'g'), `href:'${prefix}/`],
       [new RegExp(`src="/${skip}`, 'g'), `src="${prefix}/`],
       [new RegExp(`href='/${skip}`, 'g'), `href='${prefix}/`],
       [new RegExp(`src='/${skip}`, 'g'), `src='${prefix}/`],
